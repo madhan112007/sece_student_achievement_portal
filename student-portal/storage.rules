@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Submissions folder - users can only upload to their own folder
+    match /submissions/{userId}/{fileName} {
+      // Allow read/write for file owner
+      allow read, write: if request.auth != null && request.auth.uid == userId
+        && isValidFile();
+      
+      // Allow read for admin/faculty
+      allow read: if request.auth != null && 
+        isAdminOrFaculty();
+    }
+    
+    // Helper functions
+    function isValidFile() {
+      return request.resource.size < 5 * 1024 * 1024 // 5MB limit
+        && request.resource.contentType.matches('(image/jpeg|image/png|application/pdf)');
+    }
+    
+    function isAdminOrFaculty() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'faculty'];
+    }
+  }
+}

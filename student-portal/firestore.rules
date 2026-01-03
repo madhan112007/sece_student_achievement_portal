@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Users collection - users can manage their own profile
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Admin/Faculty can read all user profiles
+      allow read: if request.auth != null && isAdminOrFaculty();
+    }
+    
+    // Submissions collection
+    match /submissions/{submissionId} {
+      // Students can create and read their own submissions
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId &&
+        isValidSubmission();
+      
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || isAdminOrFaculty());
+      
+      // Only admin/faculty can update submission status
+      allow update: if request.auth != null && 
+        isAdminOrFaculty() &&
+        isValidStatusUpdate();
+    }
+    
+    // Reviews collection
+    match /reviews/{reviewId} {
+      // Only admin/faculty can create reviews
+      allow create: if request.auth != null && 
+        isAdminOrFaculty() &&
+        request.resource.data.reviewerId == request.auth.uid;
+      
+      // Anyone authenticated can read reviews
+      allow read: if request.auth != null;
+    }
+    
+    // Helper functions
+    function isAdminOrFaculty() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'faculty'];
+    }
+    
+    function isValidSubmission() {
+      let data = request.resource.data;
+      return data.category in ['Certification', 'Internship', 'Project', 'Workshop', 'Hackathon'] &&
+        data.title is string &&
+        data.organization is string &&
+        data.status == 'pending';
+    }
+    
+    function isValidStatusUpdate() {
+      let data = request.resource.data;
+      return data.status in ['pending', 'approved', 'rejected'] &&
+        data.keys().hasOnly(['status', 'updatedAt', 'reviewedBy']);
+    }
+  }
+}
